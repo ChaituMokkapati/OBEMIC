@@ -1,0 +1,180 @@
+openapi: 3.0.3
+info:
+  title: OBEMIC API
+  description: API definitions for OBEMIC Admin Import and Authentication endpoints.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local development server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - bearerAuth: []
+
+paths:
+  /api/v1/auth/login:
+    post:
+      summary: Login to get an access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  example: admin@college.edu
+                employeeId:
+                  type: string
+                  example: EMP123
+                password:
+                  type: string
+                  example: password123
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                  user:
+                    type: object
+
+  /api/v1/auth/change-password:
+    post:
+      summary: Change temporary password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPassword
+                - newPassword
+              properties:
+                oldPassword:
+                  type: string
+                  example: EMP123@CSE
+                newPassword:
+                  type: string
+                  example: SecurePassword123!
+      responses:
+        '200':
+          description: Password changed successfully
+        '401':
+          description: Unauthorized
+
+  /api/v1/admin/faculty/upload/preview:
+    post:
+      summary: Preview Faculty Excel Upload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The Stafflist Excel workbook
+      responses:
+        '200':
+          description: Preview summary including batchId
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batchId:
+                    type: string
+                  creates:
+                    type: integer
+                  unchanged:
+                    type: integer
+                  conflicts:
+                    type: integer
+                  canConfirm:
+                    type: boolean
+                  expiresAt:
+                    type: string
+                    format: date-time
+
+  /api/v1/admin/faculty/upload/confirm:
+    post:
+      summary: Confirm Faculty Upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - batchId
+              properties:
+                batchId:
+                  type: string
+      responses:
+        '200':
+          description: Import Confirmed
+        '400':
+          description: Bad request (e.g. Batch is stale or expired)
+        '409':
+          description: Conflict (e.g. Batch already confirmed or invalid state)
+
+  /api/v1/admin/course-outcomes/upload/preview:
+    post:
+      summary: Preview Course Outcomes Excel Upload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The Course Outcomes Excel workbook
+      responses:
+        '200':
+          description: Preview summary including batchId
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batchId:
+                    type: string
+                  canConfirm:
+                    type: boolean
+
+  /api/v1/admin/course-outcomes/upload/confirm:
+    post:
+      summary: Confirm Course Outcomes Upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - batchId
+              properties:
+                batchId:
+                  type: string
+      responses:
+        '200':
+          description: Import Confirmed
+        '400':
+          description: Bad request

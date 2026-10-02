@@ -1,0 +1,507 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// -----------------------------------------
+// ENUMS
+// -----------------------------------------
+enum RoleName {
+  FACULTY
+  ADMIN
+  COORDINATOR
+  MANAGEMENT
+}
+
+enum ReportType {
+  INTERNAL
+  EXTERNAL
+  OVERALL
+  INDIRECT
+  COPO
+}
+
+enum ReportStatus {
+  DRAFT
+  GENERATED
+  SUBMITTED
+  REVIEWED
+  APPROVED
+  REJECTED
+  PUBLISHED
+}
+
+enum SurveyStatus {
+  OPEN
+  CLOSED
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ImportStatus {
+  PREVIEWED
+  CONFIRMING
+  CONFIRMED
+  FAILED
+  EXPIRED
+  STALE
+}
+
+enum ConfigScope {
+  GLOBAL
+  DEPARTMENT
+  ACADEMIC_YEAR
+  SEMESTER
+  SUBJECT
+}
+
+// -----------------------------------------
+// MODELS
+// -----------------------------------------
+
+model Role {
+  id        String   @id @default(uuid())
+  roleName  RoleName @unique
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Department {
+  id                 String                     @id @default(uuid())
+  departmentName     String                     @unique
+  users              User[]
+  subjects           Subject[]
+  sections           Section[]
+  surveys            Survey[]
+  attainmentConfigs  AttainmentConfiguration[]
+  studentEnrollments StudentEnrollment[]
+  psos               ProgramSpecificObjective[]
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+}
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  employeeId         String?   @unique
+  mustChangePassword Boolean   @default(false)
+  passwordChangedAt  DateTime?
+  lastLoginAt        DateTime?
+
+  facultyProfile    FacultyProfile?
+  importBatches     ImportBatch[]
+  attainmentConfigs AttainmentConfiguration[]
+  thresholdHistory  AttainmentThresholdHistory[]
+
+  assignments FacultyAssignment[]
+  reports     ReportHistory[]
+  auditLogs   AuditLog[]
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AcademicYear {
+  id                 String                    @id @default(uuid())
+  year               String                    @unique // e.g., "2025-2026"
+  semesters          Semester[]
+  assignments        FacultyAssignment[]
+  sections           Section[]
+  surveys            Survey[]
+  attainmentConfigs  AttainmentConfiguration[]
+  studentEnrollments StudentEnrollment[]
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+}
+
+model Semester {
+  id                 String                    @id @default(uuid())
+  semester           String // e.g., "3-1"
+  academicYearId     String
+  academicYear       AcademicYear              @relation(fields: [academicYearId], references: [id])
+  assignments        FacultyAssignment[]
+  attainmentConfigs  AttainmentConfiguration[]
+  studentEnrollments StudentEnrollment[]
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  Survey             Survey[]
+
+  @@unique([semester, academicYearId])
+}
+
+model Subject {
+  id          String @id @default(uuid())
+  subjectCode String @unique
+  subjectName String
+  credits     Float?
+
+  semesterLevel String? // e.g., "3-1" (Decoupled from temporal Semester model)
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  regulationId String?
+  regulation   Regulation? @relation(fields: [regulationId], references: [id])
+
+  assignments       FacultyAssignment[]
+  reports           ReportHistory[]
+  courseOutcomes    CourseOutcome[]
+  attainmentConfigs AttainmentConfiguration[]
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Survey    Survey[]
+}
+
+model FacultyAssignment {
+  id        String @id @default(uuid())
+  facultyId String
+  faculty   User   @relation(fields: [facultyId], references: [id])
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  semesterId String
+  semester   Semester @relation(fields: [semesterId], references: [id])
+
+  sectionId String?
+  section   Section? @relation(fields: [sectionId], references: [id])
+
+  status       AssignmentStatus @default(ACTIVE)
+  assignedBy   String?
+  unassignedAt DateTime?
+
+  surveyResponses SurveyResponse[]
+  reports         ReportHistory[]
+
+  progressState Json? // Tracks wizard unlocking (e.g. { "indirect": true, "direct": true })
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([facultyId, subjectId, academicYearId, semesterId, sectionId])
+}
+
+model ReportHistory {
+  id String @id @default(uuid())
+
+  facultyId String
+  faculty   User   @relation(fields: [facultyId], references: [id])
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  facultyAssignmentId String?
+  facultyAssignment   FacultyAssignment? @relation(fields: [facultyAssignmentId], references: [id])
+
+  reportType ReportType
+  status     ReportStatus @default(DRAFT)
+  feedback   String? // Coordinator feedback when rejected
+
+  filePath String?
+  fileSize Int?
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  data Json? // Stores raw calculated attainment arrays/percentages
+
+  generatedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model AuditLog {
+  id     String  @id @default(uuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  action   String
+  entity   String?
+  entityId String?
+
+  createdAt DateTime @default(now())
+}
+
+model Section {
+  id          String @id @default(uuid())
+  sectionName String // e.g., "A", "B"
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  facultyAssignments FacultyAssignment[]
+  studentEnrollments StudentEnrollment[]
+  surveys            Survey[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([sectionName, departmentId, academicYearId])
+}
+
+model Student {
+  id           String @id @default(uuid())
+  rollNumber   String @unique
+  name         String
+  passwordHash String
+
+  enrollments     StudentEnrollment[]
+  surveyResponses SurveyResponse[]
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StudentEnrollment {
+  id        String  @id @default(uuid())
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  semesterId String
+  semester   Semester @relation(fields: [semesterId], references: [id])
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  sectionId String
+  section   Section @relation(fields: [sectionId], references: [id])
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, academicYearId, semesterId])
+}
+
+model CourseOutcome {
+  id          String @id @default(uuid())
+  coCode      String // e.g., "CO1", "CO2"
+  description String
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  surveyRatings SurveyRating[]
+  copoMappings  CoPoMapping[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([coCode, subjectId])
+}
+
+model CoPoMapping {
+  id              String        @id @default(uuid())
+  courseOutcomeId String
+  courseOutcome   CourseOutcome @relation(fields: [courseOutcomeId], references: [id], onDelete: Cascade)
+
+  poCode           String // e.g. "PO1", "PSO1"
+  correlationLevel Int // e.g. 1, 2, 3
+
+  @@unique([courseOutcomeId, poCode])
+}
+
+model Regulation {
+  id        String    @id @default(uuid())
+  name      String    @unique // e.g., "23", "MIC23"
+  subjects  Subject[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model FacultyProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  facultyCode String?  @unique
+  designation String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ImportBatch {
+  id         String       @id @default(uuid())
+  importType String // "CO_IMPORT", "FACULTY_IMPORT"
+  status     ImportStatus @default(PREVIEWED)
+  importedBy String
+  user       User         @relation(fields: [importedBy], references: [id])
+  details    String? // Storing JSON string or summary
+  expiresAt  DateTime
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model AttainmentConfiguration {
+  id        String      @id @default(uuid())
+  scopeType ConfigScope
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  academicYearId String?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
+
+  semesterId String?
+  semester   Semester? @relation(fields: [semesterId], references: [id])
+
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id])
+
+  threshold     Float
+  isActive      Boolean   @default(true)
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  updatedBy String?
+  user      User?   @relation(fields: [updatedBy], references: [id])
+
+  history AttainmentThresholdHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AttainmentThresholdHistory {
+  id              String                  @id @default(uuid())
+  configurationId String
+  configuration   AttainmentConfiguration @relation(fields: [configurationId], references: [id])
+
+  oldThreshold Float?
+  newThreshold Float
+
+  changedBy String?
+  user      User?   @relation(fields: [changedBy], references: [id])
+
+  reason    String?
+  changedAt DateTime @default(now())
+}
+
+model Survey {
+  id    String @id @default(uuid())
+  title String
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  semesterId String
+  semester   Semester @relation(fields: [semesterId], references: [id])
+
+  status    SurveyStatus @default(OPEN)
+  startDate DateTime?
+  endDate   DateTime?
+
+  responses SurveyResponse[]
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  Department   Department? @relation(fields: [departmentId], references: [id])
+  departmentId String?
+  Subject      Subject?    @relation(fields: [subjectId], references: [id])
+  subjectId    String?
+  Section      Section?    @relation(fields: [sectionId], references: [id])
+  sectionId    String?
+}
+
+model SurveyResponse {
+  id String @id @default(uuid())
+
+  surveyId String
+  survey   Survey @relation(fields: [surveyId], references: [id])
+
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+
+  facultyAssignmentId String
+  facultyAssignment   FacultyAssignment @relation(fields: [facultyAssignmentId], references: [id])
+
+  ratings SurveyRating[]
+
+  submittedAt DateTime @default(now())
+
+  @@unique([surveyId, studentId, facultyAssignmentId])
+}
+
+model SurveyRating {
+  id String @id @default(uuid())
+
+  surveyResponseId String
+  surveyResponse   SurveyResponse @relation(fields: [surveyResponseId], references: [id], onDelete: Cascade)
+
+  courseOutcomeId String
+  courseOutcome   CourseOutcome @relation(fields: [courseOutcomeId], references: [id])
+
+  rating    Int
+  createdAt DateTime @default(now())
+}
+
+model ProgramOutcome {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g. "PO1", "PO2"
+  title       String // e.g. "Engineering Knowledge"
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProgramEducationalObjective {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g. "PEO1"
+  title       String // e.g. "Professional Excellence"
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProgramSpecificObjective {
+  id           String     @id @default(uuid())
+  code         String // e.g. "PSO1"
+  title        String // e.g. "Software Development"
+  description  String
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([code, departmentId])
+}
