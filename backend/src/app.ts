@@ -39,8 +39,18 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/student', studentAuthRoutes);
 app.use('/api/v1/student', studentSurveyRoutes);
 
-// Healthcheck
-app.get('/health', (req: Request, res: Response) => {
+// Root + health (avoid Express "Cannot GET /" on the public API domain)
+app.get('/', (_req: Request, res: Response) => {
+  res.json({
+    name: 'OBEMIC API',
+    status: 'OK',
+    api: '/api/v1',
+    health: '/health',
+    docs: '/api-docs',
+  });
+});
+
+app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'OK' });
 });
 
